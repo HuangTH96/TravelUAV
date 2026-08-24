@@ -1,99 +1,54 @@
-
-
-<div align="center">
-<h1>Towards Realistic UAV Vision-Language Navigation: Platform, Benchmark, and Methodology</h1>
-
-<image src="./header.png" width="70%">
-
-<a href="https://arxiv.org/abs/2410.07087"><img src='https://img.shields.io/badge/arXiv-TRAVEL: UAV VLN Platform, Benchmark, and Methodology-red' alt='Paper PDF'></a>
-<a href='https://prince687028.github.io/OpenUAV/'><img src='https://img.shields.io/badge/Project_Page-TRAVEL-green' alt='Project Page'></a>
-<a href='https://huggingface.co/datasets/wangxiangyu0814/TravelUAV'><img src='https://img.shields.io/badge/Dataset-TRAVEL-blue'></a>
-<a href='https://huggingface.co/datasets/wangxiangyu0814/TravelUAV_env'><img src='https://img.shields.io/badge/Env-TRAVEL-blue'></a>
-</div>
-
-## Contents
-
-- [Introduction](#introduction)
-- [Dependencies](#dependencies)
-- [Preparation](#prepare-the-data)
-- [Usage](#usage)
-- [Citation](#paper)
-
-## News
-- **2025-01-25:** Paper, project page, code, data, envs and models are all released.
-
-# Introduction
-This work presents  **_TOWARDS REALISTIC UAV VISION-LANGUAGE NAVIGATION: PLATFORM, BENCHMARK, AND METHODOLOGY_**. We introduce a UAV simulation platform, an assistant-guided realistic UAV VLN benchmark, and an MLLM-based method to address the challenges in realistic UAV vision-language navigation.
-
-# Dependencies
-
-### Create `llamauav` environment
-
-```bash
+# Setup env
+修改原仓库中的setup
+```
 conda create -n llamauav python=3.10 -y
 conda activate llamauav
 pip install torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cu118
 ```
 
-## Install LLaMA-UAV model
-
-You can follow [LLaMA-UAV](./Model/LLaMA-UAV/README.md#install) to install the llm dependencies.
-
-### Install other dependencies listed in the requirements file
-
-```bash
-pip install -r requirement.txt
+## Install Llama-UAV model
+```
+git clone git@github.com:HuangTH96/TravelUAV.git
+cd TravelUAV/Model/Llama-UAV
+pip install -e .
 ```
 
-Additionally, to ensure compatibility with the AirSim Python API, apply the fix mentioned in the [AirSim issue](https://github.com/microsoft/AirSim/issues/3333#issuecomment-827894198)
-
-# Preparation
-
-## Data
-To prepare the dataset, please follow the instructions provided in the [Dataset Section](./Model/LLaMA-UAV/README.md#dataset) to construct the dataset.
-
-## Model
-To set up the model, refer to to the detailed [Model Setup](./Model/LLaMA-UAV/README.md).
-
-## Simulator environments
-Download the simulator environments for various maps from [here](https://huggingface.co/datasets/wangxiangyu0814/TravelUAV_env).
-
-# Usage
-1. setup simulator env server
-
-Before running the simulations, ensure the AirSim environment server is properly configured. 
-> Update the env executable paths`env_exec_path_dict` relative to `root_path` in `AirVLNSimulatorServerTool.py`.
-```bash
-cd airsim_plugin
-python AirVLNSimulatorServerTool.py --port 30000 --root_path /path/to/your/envs
+## dependency: flash-attn
 ```
-2. run close-loop simulation
-
-Once the simulator server is running, you can execute the dagger or evaluation script.
-```bash
-# Dagger NYC
-bash scripts/dagger_NYC.sh
-# Eval
-bash scripts/eval.sh
-bash scripts/metrics.sh
+wget https://github.com/Dao-AILab/flash-attention/releases/download/v2.5.9.post1/flash_attn-2.5.9.post1+cu118torch2.0cxx11abiFALSE-cp310-cp310-linux_x86_64.whl
+pip install flash_attn-2.5.9.post1+cu118torch2.0cxx11abiFALSE-cp310-cp310-linux_x86_64.whl
 ```
 
-# Paper
-
-If you find this project useful, please consider citing: [paper](https://arxiv.org/abs/2410.07087):
-
+## airsim
 ```
-@misc{wang2024realisticuavvisionlanguagenavigation,
-      title={Towards Realistic UAV Vision-Language Navigation: Platform, Benchmark, and Methodology},
-      author={Xiangyu Wang and Donglin Yang and Ziqin Wang and Hohin Kwan and Jinyu Chen and Wenjun Wu and Hongsheng Li and Yue Liao and Si Liu},
-      year={2024},
-      eprint={2410.07087},
-      archivePrefix={arXiv},
-      primaryClass={cs.CV},
-      url={https://arxiv.org/abs/2410.07087},
-}
+pip install airsim==1.8.1 --no-build-isolation
 ```
 
-# Acknowledgement
+## others
+```
+cd ~/TravelUAV
+pip install -r requirements.txt
+```
 
-This repository is partly based on [AirVLN](https://github.com/AirVLN/AirVLN) and [LLaMA-VID](https://github.com/dvlab-research/LLaMA-VID) repositories.
+## fix bug: msgpack-rpc-python as mentioned [here](https://github.com/microsoft/AirSim/issues/3333#issuecomment-827894198)
+```
+pip uninstall msgpack-rpc-python -y
+git clone https://github.com/tbelhalfaoui/msgpack-rpc-python.git
+cd msgpack-rpc-python
+git checkout fix-msgpack-dep
+python setup.py install
+cd ..
+```
+
+然后需要修改 AirSim 中的 `client.py`. \
+首先查找 `client.py` 文件位置: \
+```python -c "import airsim, os; print(os.path.join(os.path.dirname(airsim.__file__), 'client.py'))"``` \
+打开文件后，将 \
+```self.client = msgpackrpc.Client(msgpackrpc.Address(ip, port), timeout=timeout_value, pack_encoding='utf-8', unpack_encoding='utf-8')``` \
+改成： \
+```self.client = msgpackrpc.Client(msgpackrpc.Address(ip, port), timeout=timeout_value)```
+
+# Pretrained weights for models
+
+
+# Dataset
