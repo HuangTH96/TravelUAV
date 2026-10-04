@@ -92,7 +92,8 @@ if __name__ == "__main__":
     # 使用CLIP的图像预处理：resize 到 224 * 224、按CLIP的均值方差做normalize、转成 pixel_values 张量
     imgs = processer.preprocess(imgs, return_tensors='pt')['pixel_values'].to(dtype=torch.bfloat16)
     # 保存进文件 rgb_imgs.tensor
-    torch.save(imgs, os.path.join(traj_dir, 'rgb_imgs.tensor'))
+    # torch.save(imgs, os.path.join(traj_dir, 'rgb_imgs.tensor'))
+    torch.save(imgs, os.path.join(traj_dir, 'feature.tensor'))
 
   # 串行处理各个地图
   for map_name in args.map_list:
