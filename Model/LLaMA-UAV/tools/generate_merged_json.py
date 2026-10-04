@@ -23,6 +23,7 @@ def arg_parse():
     parser.add_argument("--root_dir",
                         default='/path/to/your/dataset',
                         help='path to your dataset root dir')
+    # 从TravelUAV_dataset中 实际解压出来的数据集还包括：BattelfieldKitDesert, BrushifyCountryRoads, BrushifyForesetPack, BrushifyUrban, Japanese_Street, London_Street
     parser.add_argument("--map_list",
                         default=['NewYorkCity', 'ModernCityMap', 'NYCEnvironmentMegapa', 'TropicalIsland', 'ModularPark', 'Carla_Town01', 'Carla_Town02', 'Carla_Town03', 'Carla_Town04','Carla_Town05', 'Carla_Town06', 'Carla_Town07', 'Carla_Town10HD', 'Carla_Town15'],
                         nargs="+",
