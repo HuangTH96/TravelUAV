@@ -1,3 +1,10 @@
+"""
+不需要单独运行，被其他脚本作为模块导入并实例化调用。
+
+主要职责：
+1. 通过RPC呼叫Server打开场景
+2. 场景启动成功后，通过 airsim.MultirotorClient 与对应的端口建立连接，执行控制命令
+"""
 from collections import deque
 import multiprocessing
 import msgpackrpc
@@ -104,7 +111,8 @@ class MyThread(threading.Thread):
 class AirVLNSimulatorClientTool:
     def __init__(self, machines_info) -> None:
         self.machines_info = copy.deepcopy(machines_info)
-        self.socket_clients = []
+        self.socket_clients = []        # 用于存储socket连接
+        # 多台机器（machines_info），每台机器（item）有多个 open_scenes，每个 scene 对应一个 AirSim Client， None会被真正的client代替
         self.airsim_clients = [[None for _ in list(item['open_scenes'])] for item in machines_info ]
         self.airsim_ports = []
         self.airsim_ip = '127.0.0.1'
@@ -292,42 +300,52 @@ class AirVLNSimulatorClientTool:
             logger.error(e)
 
     def move_path_by_waypoints(self, waypoints_list, start_states):
+        # 设置飞行参数
         velocity = 1
         drivetrain = airsim.DrivetrainType.ForwardOnly
         yaw_mode=airsim.YawMode(is_rate=False)
         lookahead=3
         adaptive_lookahead=1
+
+        # 一架飞机：airsim_client 的一次完整的waypoint：waypoints 任务
         def move_path(airsim_client: airsim.VehicleClient, waypoints, start_state):
-            results = []
+            results = []    # 采集飞行过程中的状态
             state_sensor = State(airsim_client, )
             imu_sensor = Imu(airsim_client, imu_name='Imu')
-            path = [airsim.Vector3r(*waypoint[0:3]) for waypoint in waypoints]
+            path = [airsim.Vector3r(*waypoint[0:3]) for waypoint in waypoints]  # 将waypoints转变成AirSim中的waypoint path格式
             airsim_client.enableApiControl(True)
             airsim_client.armDisarm(True)
             airsim_client.simPause(False)
+            # 直接设置初始状态
             airsim_client.simSetKinematics(start_state, ignore_collision=False)
-            state_info = state_sensor.retrieve()
+            state_info = state_sensor.retrieve()    # 读取传感器数值
+            # 异步moveOnPath，后面的while循环和airsim的moveOnPath并行
             airsim_client.moveOnPathAsync(path=path, 
                                 velocity=velocity, 
                                 drivetrain=drivetrain, 
                                 yaw_mode=yaw_mode, 
                                 lookahead=lookahead, 
                                 adaptive_lookahead=adaptive_lookahead)
+            # 只关心轨迹的前5个waypoints
             target_idx = 5
             current_idx = 0
-            pos_queue = deque(maxlen=20)
+            pos_queue = deque(maxlen=20)        # 采样20次位置信息，用于判断是否卡住了
             start_time = time.perf_counter()
             collision = False
-            distance = 10000
+            distance = 10000                    # 用于判断是否经过某个waypoint
             while True:
                 time.sleep(0.005)
+                # 整个waypoint execution 最多允许5s，如果没有完成，则认为这个trajectory 执行任务失败
                 if time.perf_counter() - start_time > 5:
                     return None
+                
                 target = path[current_idx]
                 state_info = copy.deepcopy(state_sensor.retrieve())
                 imu_info = copy.deepcopy(imu_sensor.retrieve())
                 position = np.array(state_info['position'])
                 pos_queue.append(position)
+                # 如果20次的位置变化小于 0.1，则认为卡住了，退出当前循环，并标记为发生了碰撞
+                # time.sleep(0.005)，那么20次采样需要 20 * 0.005 = 0.1s，也就是要求0.1s内位移大于0.1m，即vel > 1 m/s，否则就是卡住了
                 if len(pos_queue) == pos_queue.maxlen:
                     recent_loc = position
                     history_loc = pos_queue.popleft()
@@ -336,19 +354,26 @@ class AirVLNSimulatorClientTool:
                         print('move on path api: stuck max len')
                         collision = True
                         break
+
+                # 计算当前位置和目标位置的欧式距离
                 new_distance = np.linalg.norm(position - np.array([target.x_val, target.y_val, target.z_val]))
+                # 如果越来越大，说明已经飞过该waypoint
                 if new_distance > distance:
+                    # 记录当前传感器信息
                     results.append({'sensors': {'state': state_info, 'imu': imu_info}})
-                    current_idx += 1
+                    current_idx += 1        # 切换到下一个waypoint
+
+                    # 如果达到第5个waypoint
                     if current_idx == target_idx:
-                        airsim_client.simPause(True)
-                        break
+                        airsim_client.simPause(True)    # 暂停AirSim
+                        break                           # 退出 trajectory 执行循环
                     else:
                         distance = 10000
                 else:
                     distance = new_distance
             return {'states': results, 'collision': collision}
-        
+
+        # 启动多线程，同时运行多架无人机
         threads = []
         thread_results = []
         for index_1 in range(len(self.airsim_clients)):
@@ -357,14 +382,18 @@ class AirVLNSimulatorClientTool:
                 threads[index_1].append(
                     MyThread(move_path, (self.airsim_clients[index_1][index_2], waypoints_list[index_1][index_2], start_states[index_1][index_2]))
                 )
+        # 同时启动
         for index_1, _ in enumerate(threads):
             for index_2, _ in enumerate(threads[index_1]):
                 threads[index_1][index_2].setDaemon(True)
                 threads[index_1][index_2].start()
+
+        # 等待所有无人机执行完
         for index_1, _ in enumerate(threads):
             for index_2, _ in enumerate(threads[index_1]):
                 threads[index_1][index_2].join()
 
+        # 获取每个线程中waypoints(trajectory) execution 的结果，拼接成 result_poses_list
         result_poses_list = []
         error_flag = False
         for index_1, _ in enumerate(threads):
@@ -377,13 +406,17 @@ class AirVLNSimulatorClientTool:
                 if result is None:
                     error_flag = True
                 thread_results.append(threads[index_1][index_2].flag_ok)
+
+        # 只要有一个线程执行失败，整个函数就认为失败
         threads = []
         if not (np.array(thread_results) == True).all():
             logger.error('move path by waypoints failed.')
             return None
+        # 检查有没有timeout，超时任务也失败
         if error_flag:
             return None
-        return result_poses_list
+        
+        return result_poses_list    # 每架无人机执行trajectory后采集到的state_info 和 imu_info
     
     def setPoses(self, poses: list) -> bool:
         def _setPoses(airsim_client: airsim.VehicleClient, pose: airsim.Pose) -> None:

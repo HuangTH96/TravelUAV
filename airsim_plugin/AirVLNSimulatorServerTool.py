@@ -314,6 +314,7 @@ def pid_exists(pid) -> bool:
         return False
 
     try:
+        # 0 是特殊值，不会帧的杀死进程，通过捕获跑出的异常类型判断进程是否存在
         os.kill(pid, 0)
     except OSError as err:
         if err.errno == errno.ESRCH:
@@ -331,6 +332,7 @@ def pid_exists(pid) -> bool:
 
 
 def FromPortGetPid(port: int):
+    # 检查端口 port ，如果被占用，则返回占用的进程ID
     subprocess_execute = "netstat -nlp | grep {}".format(
         port,
     )
@@ -371,7 +373,7 @@ def FromPortGetPid(port: int):
 
     return pid
 
-
+# 杀死进程
 def KillPid(pid) -> None:
     if pid is None or not isinstance(pid, int):
         return
@@ -386,10 +388,13 @@ def KillPid(pid) -> None:
 
     return
 
-
+"""
+防止上一次的仿真进程没有正常退出导致端口被一直占用着，需要清理网络端口层面的残留进程
+"""
 def KillPorts(ports) -> None:
     threads = []
 
+    # 强制杀死正在占用端口的进程
     def _kill_port(index, port):
         pid = FromPortGetPid(port)
         KillPid(pid)
@@ -405,7 +410,7 @@ def KillPorts(ports) -> None:
 
     return
 
-
+"""
 def KillAirVLN() -> None:
     subprocess_execute = "pkill -9 AirVLN"
 
@@ -434,7 +439,7 @@ def KillAirVLN() -> None:
 
     time.sleep(1)
     return
-
+"""
 
 class EventHandler(object):
     def __init__(self):
@@ -457,6 +462,20 @@ class EventHandler(object):
     def ping(self) -> bool:
         return True
 
+    """ 
+    private method，不对外暴露。
+
+    核心函数：
+    1. 先清理旧端口
+    2. 再给每个要打开的场景分配一个新端口
+    3. 生成对应的 AirSim settings.json
+    4. 再用 subprocess.Popen 实际启动 UE4 可执行程序进程,等待几秒让程序完全起来
+    5. 最后把"这次分配了哪些端口"记下来返回给客户端
+
+    args:
+    - ip
+    - scen_id_gpu_list. 列表，里面是 （地图名，GPU编号）的配对，因此支持同时打开多个场景，分配到不同GPU上，支持并行训练/评测
+    """
     def _open_scenes(self, ip: str , scen_id_gpu_list: list):
         print(
             "{}\t关闭场景中".format(
@@ -530,6 +549,7 @@ class EventHandler(object):
                 p_s.append(None)
                 continue
             else:
+                # 默认无头模式启动UE4
                 subprocess_execute = "bash {} -RenderOffscreen -NoSound -NoVSync -GraphicsAdapter={} -settings={} ".format(
                     choose_env_exe_paths[index],
                     gpu_id,
@@ -561,7 +581,12 @@ class EventHandler(object):
         print("finished", ip)
 
         return True, (ip, ports)
+
+    """
+    对外接口
     
+    用于某一个场景崩溃了/卡死了,单独重启这一个,不影响其他正在运行的场景
+    """
     def reopen_scene_from_port(self, port):
 
         KillPorts([port])
@@ -569,6 +594,7 @@ class EventHandler(object):
         scene_id, gpu_id = self.port_to_scene[port]
         res = glob.glob((str(SEARCH_ENVs_PATH / (scene_id + '.sh'))))
         env_path = res[0]
+        # 默认无头模式启动UE4
         subprocess_execute = "bash {} -RenderOffscreen -NoSound -NoVSync -GraphicsAdapter={} -settings={} ".format(
                     env_path,
                     gpu_id,
@@ -582,7 +608,12 @@ class EventHandler(object):
                         stdin=None, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
                         shell=True,
                     )
-        
+
+    """
+    对外接口
+
+    客户端真正调用的接口，调用private method: _open_scenes
+    """     
     def reopen_scenes(self, ip: str, scen_id_gpu_list: list):
         print(
             "{}\tSTART reopen_scenes".format(
@@ -648,7 +679,14 @@ def serve_background(server, daemon=False):
     t.start()
     return t
 
+"""
+将核心业务逻辑类 EventHandler 的实例包装成一个 msgpackrpc 服务器，暴露给外部调用；
 
+这种服务器是一种远程过程调用（RPC）机制，包装后，EventHandler 中 public methods 可以被另一个进程通过网络请求的方式直接调用，比如 AirVLNSimulatorClientTool.py 
+中的 socket_client.call('ping') 
+
+
+"""
 def serve(daemon=False):
     try:
         server = msgpackrpc.Server(EventHandler())
@@ -685,12 +723,13 @@ if __name__ == '__main__':
     ) 
     args = parser.parse_args()
 
-
+    # LocalHost
     HOST = '127.0.0.1'
     PORT = int(args.port)
     CWD_DIR = Path(str(os.path.abspath(__file__))).resolve()
-    PROJECT_ROOT_DIR = CWD_DIR.parent.parent
+    PROJECT_ROOT_DIR = CWD_DIR.parent.parent    # /data/huangth/TravelUAV
     print("PROJECT_ROOT_DIR",PROJECT_ROOT_DIR)
+    # TODO: args.root_path 为 /data/huangth/TravelUAV_env/extracted，里面直接就是各个环境的文件夹，没有/envs/，所以assert一定会报错
     SEARCH_ENVs_PATH = Path(args.root_path + '/envs/')
     assert os.path.exists(str(SEARCH_ENVs_PATH)), 'error'
 
