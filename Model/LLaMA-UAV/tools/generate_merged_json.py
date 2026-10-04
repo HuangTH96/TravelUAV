@@ -16,15 +16,16 @@ random.seed = 1
 
 RGB_FOLDER = ['frontcamera', 'leftcamera', 'rightcamera', 'rearcamera', 'downcamera']
 DEPTH_FOLDER = [name + '_depth' for name in RGB_FOLDER]
-clip_merged_file_name = 'merged_data.json'
+clip_merged_file_name = 'merged_data.json'  # 最终生成的文件名为 merged_data.json
 
 def arg_parse():
     parser = argparse.ArgumentParser(description="split video clip")
     parser.add_argument("--root_dir",
                         default='/path/to/your/dataset',
                         help='path to your dataset root dir')
-    # 从 TravelUAV_dataset中 实际解压出来的数据集还包括：BattelfieldKitDesert, BrushifyCountryRoads, BrushifyForesetPack, BrushifyUrban, Japanese_Street, London_Street
-    # 在 TravelUAV_envs 中，以下地图被包含在 carla_town_envs 和 closeloop_envs 文件夹中
+    # 从 TravelUAV_dataset中 实际解压出来的数据集还包括：BattelfieldKitDesert, BrushifyCountryRoads, BrushifyForesetPack, BrushifyUrban, Japanese_Street, London_Street， WesterTown
+    # 在 TravelUAV_envs 中，以下地图被包含在 carla_town_envs 和 closeloop_envs 文件夹中，另外也包括 TravelUAV_dataset 中的额外的地图
+    # 额外的地图在 trainset.json 中被考虑，但是在 seen_valset.json 和 unseen_valset.json 中没有
     parser.add_argument("--map_list",
                         default=['NewYorkCity', 'ModernCityMap', 'NYCEnvironmentMegapa', 'TropicalIsland', 'ModularPark', 'Carla_Town01', 'Carla_Town02', 'Carla_Town03', 'Carla_Town04','Carla_Town05', 'Carla_Town06', 'Carla_Town07', 'Carla_Town10HD', 'Carla_Town15'],
                         nargs="+",
@@ -190,6 +191,7 @@ def merge_map_logs(map_dir):
                 },
                 {"from": "gpt", "value": ""}                                                # value 为空，说明监督信号不是模型的输出，而是trajectory 字段做轨迹回归的监督，语言模型和轨迹补全模型是分开训练的两个组件
             ]
+        # 这个 traj_merged_info 中包含的内容就是最终生成的文件的内容
         with open(os.path.join(traj_path, clip_merged_file_name), 'w') as f:
             json.dump(traj_merged_info, f)
         traj_paths.append((os.path.join(traj_path, clip_merged_file_name), len(indexs)))
