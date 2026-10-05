@@ -726,10 +726,12 @@ if __name__ == '__main__':
     # LocalHost
     HOST = '127.0.0.1'
     PORT = int(args.port)
-    CWD_DIR = Path(str(os.path.abspath(__file__))).resolve()
+    SCRIPT_FILE = Path(str(os.path.abspath(__file__))).resolve()
+    CWD_DIR = SCRIPT_FILE.parent                # /data/huangth/airsim_plugin 
     PROJECT_ROOT_DIR = CWD_DIR.parent.parent    # /data/huangth/TravelUAV
     print("PROJECT_ROOT_DIR",PROJECT_ROOT_DIR)
     # TODO: args.root_path 为 /data/huangth/TravelUAV_env/extracted，里面直接就是各个环境的文件夹，没有/envs/，所以assert一定会报错
+    # 在 /extracted 中创建一个空目录 /envs/ ，暂时规避这个error
     SEARCH_ENVs_PATH = Path(args.root_path + '/envs/')
     assert os.path.exists(str(SEARCH_ENVs_PATH)), 'error'
 
