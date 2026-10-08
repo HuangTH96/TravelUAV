@@ -2,3 +2,7 @@ msgpack-rpc-python/
 *.whl
 .vscode
 airsim_plugin/settings/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
